@@ -4,85 +4,38 @@ import torch
 import numpy as np
 
 from src.mcts.mucts import MuZeroMCTS
-from src.games.connect_four_ai import ConnectFour  # Your game environment
 
 
-class GameHistory:
-    def __init__(self):
-        self.observations = []
-        self.actions = []
-        self.policies = []
-        self.rewards = []
-        self.players = []
+def self_play(env, network, num_simulations):
+    memory = []
 
-    def store_search_statistics(self, root):
-        visit_counts = np.array(
-            [
-                root.children[a].visit_count if a in root.children else 0
-                for a in range(7)
-            ]
+    obs = env.reset()
+    done = False
+
+    while not done:
+        # 1. Preprocess observation
+        obs_tensor = preprocess_obs(obs).unsqueeze(0)  # (batch_size=1)
+
+        # 2. Initial inference (representation)
+        hidden_state, policy_logits, value = network.initial_inference(obs_tensor)
+
+        # 3. Run MCTS
+        action, search_stats = run_mcts(hidden_state, network, num_simulations)
+
+        # 4. Environment step
+        next_obs, reward, done, info = env.step(action)
+
+        # 5. Save data
+        memory.append(
+            {
+                "observation": obs,
+                "action": action,
+                "reward": reward,
+                "policy": search_stats["policy"],  # Final MCTS visit distribution
+                "value": value.item(),
+            }
         )
-        policy = visit_counts / np.sum(visit_counts)
-        self.policies.append(policy)
 
-    def store(self, observation, action, reward, player):
-        self.observations.append(observation)
-        self.actions.append(action)
-        self.rewards.append(reward)
-        self.players.append(player)
+        obs = next_obs
 
-
-def play_game(representation_net, dynamics_net, prediction_net, num_simulations=50):
-    """
-    Play a single self-play game and return its history
-    """
-    game = ConnectFour()
-    history = GameHistory()
-
-    mcts = MuZeroMCTS(
-        representation_net=representation_net,
-        dynamics_net=dynamics_net,
-        prediction_net=prediction_net,
-        action_space_size=7,
-        num_simulations=num_simulations,
-    )
-
-    obs = torch.tensor(game.get_observation(), dtype=torch.float32)  # (2, 6, 7)
-
-    while not game.is_terminal():
-        legal_actions = game.legal_actions()
-
-        root = mcts.run(obs, legal_actions, game.current_player)
-
-        # Choose action based on visit counts (softmax temperature)
-        visit_counts = np.array(
-            [
-                root.children[a].visit_count if a in root.children else 0
-                for a in range(7)
-            ]
-        )
-        action = np.argmax(
-            visit_counts
-        )  # Greedy during self-play, can add randomness later
-
-        history.store(
-            obs, action, reward=0, player=game.current_player
-        )  # reward will be updated later
-        history.store_search_statistics(root)
-
-        game.step(action)
-
-        obs = torch.tensor(game.get_observation(), dtype=torch.float32)
-
-    # Update rewards at the end
-    winner = game.get_winner()
-    for idx, player in enumerate(history.players):
-        if winner == 0:
-            reward = 0  # Draw
-        elif player == winner:
-            reward = 1
-        else:
-            reward = -1
-        history.rewards[idx] = reward
-
-    return history
+    return memory
