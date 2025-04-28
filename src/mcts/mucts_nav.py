@@ -21,16 +21,14 @@ class MCTSNode:
 class MuZeroMCTS:
     def __init__(
         self,
-        representation_net,
-        dynamics_net,
-        prediction_net,
+        network,
         action_space_size,
         num_simulations=50,
         c_puct=1.0,
     ):
-        self.representation_net = representation_net
-        self.dynamics_net = dynamics_net
-        self.prediction_net = prediction_net
+        self.muzero = network 
+        self.dynamics_net = network.dynamics_net
+        self.prediction_net = network.policy_head
 
         self.action_space_size = action_space_size
         self.num_simulations = num_simulations
@@ -42,16 +40,11 @@ class MuZeroMCTS:
         """
 
         with torch.no_grad():
-            # Encode observation into hidden state
-            hidden_state = self.representation_net(
-                observation.unsqueeze(0)
-            )  # (1, C, H, W)
-            policy_logits, _ = self.prediction_net(hidden_state)
+            hidden_state, policy_logits, _ = self.muzero.initial_inference(observation)
 
         policy = F.softmax(policy_logits, dim=1)[0]  # (action_space_size,)
-
         # Create root node
-        root = MCTSNode(hidden_state, prior=1.0)  # Root has dummy prior (ignored)
+        root = MCTSNode(hidden_state[0], prior=1.0)  # Root has dummy prior (ignored)
 
         # Expand root with initial policy
         for action in range(self.action_space_size):
@@ -79,14 +72,15 @@ class MuZeroMCTS:
 
         # Expansion: Predict new policy and value
         with torch.no_grad():
-            policy_logits, value = self.prediction_net(current_node.hidden_state)
+            policy_logits, value = self.muzero.prediction(current_node.hidden_state)
 
         policy = F.softmax(policy_logits, dim=1)[0]
 
         # Expand node
         for action in range(self.action_space_size):
             current_node.children[action] = MCTSNode(
-                hidden_state=current_node.hidden_state,  # Will update after dynamics
+                hidden_state=current_node.hidden_state[0],  # Will update after dynamics
+
                 prior=policy[action].item(),
             )
 
@@ -117,10 +111,13 @@ class MuZeroMCTS:
             F.one_hot(torch.tensor(best_action), num_classes=self.action_space_size)
             .float()
             .unsqueeze(0)
-        )  # (1, action_space_size)
+        ).to("cuda:0")  # (1, action_space_size)
+
+        if node.hidden_state.dim() == 1:
+            node.hidden_state = node.hidden_state.unsqueeze(0)  # add batch dimension
 
         with torch.no_grad():
-            next_hidden = self.dynamics_net(node.hidden_state, action_onehot)
+            next_hidden, _, _ , _ = self.muzero.recurrent_inference(node.hidden_state, action_onehot)
 
         best_child.hidden_state = next_hidden
 

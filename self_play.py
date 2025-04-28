@@ -5,37 +5,36 @@ import numpy as np
 
 from src.mcts.mucts import MuZeroMCTS
 
+def run_self_play(env, mcts, network, num_episodes):
+    """
+    Run multiple self-play episodes using MCTS.
+    """
+    all_episodes = []
 
-def self_play(env, network, num_simulations):
-    memory = []
+    for episode_idx in range(num_episodes):
+        obs = env.reset()
+        done = False
+        episode = []
 
-    obs = env.reset()
-    done = False
+        while not done:
+            obs_tensor = torch.from_numpy(obs).float()  # Assuming obs = (C, H, W)
+            root = mcts.run(obs_tensor)
 
-    while not done:
-        # 1. Preprocess observation
-        obs_tensor = preprocess_obs(obs).unsqueeze(0)  # (batch_size=1)
+            # Get improved policy from visit counts
+            visit_counts = np.array([root.children[a].visit_count if a in root.children else 0 for a in range(mcts.action_space_size)])
+            policy = visit_counts / np.sum(visit_counts)
 
-        # 2. Initial inference (representation)
-        hidden_state, policy_logits, value = network.initial_inference(obs_tensor)
+            # Sample action proportional to visit counts
+            action = np.random.choice(mcts.action_space_size, p=policy)
 
-        # 3. Run MCTS
-        action, search_stats = run_mcts(hidden_state, network, num_simulations)
+            # Environment step
+            next_obs, reward, done, info = env.step(action)
 
-        # 4. Environment step
-        next_obs, reward, done, info = env.step(action)
+            # Store (obs, policy, reward)
+            episode.append((obs, policy, reward))
 
-        # 5. Save data
-        memory.append(
-            {
-                "observation": obs,
-                "action": action,
-                "reward": reward,
-                "policy": search_stats["policy"],  # Final MCTS visit distribution
-                "value": value.item(),
-            }
-        )
+            obs = next_obs
 
-        obs = next_obs
+        all_episodes.append(episode)
 
-    return memory
+    return all_episodes
