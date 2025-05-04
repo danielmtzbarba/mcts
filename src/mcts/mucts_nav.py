@@ -48,9 +48,11 @@ class MuZeroMCTS:
 
         # Expand root with initial policy
         for action in range(self.action_space_size):
-            root.children[action] = MCTSNode(
-                hidden_state=hidden_state, prior=policy[action].item()
-            )
+            with torch.no_grad():
+                next_hidden, _, _, _ = self.muzero.recurrent_inference(hidden_state, torch.tensor([action]).to(hidden_state.device))
+                root.children[action] = MCTSNode(
+                    hidden_state=next_hidden, prior=policy[action].item()
+                )
 
         # Run simulations
         for _ in range(self.num_simulations):
@@ -72,9 +74,13 @@ class MuZeroMCTS:
 
         # Expansion: Predict new policy and value
         with torch.no_grad():
-            policy_logits, value = self.muzero.prediction(current_node.hidden_state)
+            next_hidden, policy_logits, value, reward = self.muzero.recurrent_inference(current_node.hidden_state, torch.tensor([action]).to(current_node.hidden_state.device))
 
+            
         policy = F.softmax(policy_logits, dim=1)[0]
+        current_node.children[action] = MCTSNode(
+            hidden_state=next_hidden, prior=policy[action].item(),
+        )
 
         # Expand node
         for action in range(self.action_space_size):
@@ -107,21 +113,16 @@ class MuZeroMCTS:
                 best_child = child
 
         # After picking the best child, simulate dynamics to next hidden state
-        action_onehot = (
-            F.one_hot(torch.tensor(best_action), num_classes=self.action_space_size)
-            .float()
-            .unsqueeze(0)
-        ).to("cuda:0")  # (1, action_space_size)
-
+        best_action = torch.tensor(best_action, dtype=torch.long).unsqueeze(0).to("cuda:0")  # (1,)
         if node.hidden_state.dim() == 1:
             node.hidden_state = node.hidden_state.unsqueeze(0)  # add batch dimension
 
         with torch.no_grad():
-            next_hidden, _, _ , _ = self.muzero.recurrent_inference(node.hidden_state, action_onehot)
+            next_hidden, _, _ , _ = self.muzero.recurrent_inference(node.hidden_state, best_action)
 
         best_child.hidden_state = next_hidden
 
-        return best_action, best_child
+        return best_action.item(), best_child
 
     def ucb_score(self, parent, child, total_visits):
         """
@@ -139,6 +140,8 @@ class MuZeroMCTS:
         """
         Backpropagate value up the path
         """
+        discount = 0.99  # Example discount factor
         for node in reversed(path):
             node.value_sum += value
             node.visit_count += 1
+            value *= discount

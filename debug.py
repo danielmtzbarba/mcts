@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from src.neural.models import RepresentationNetwork, DynamicsNetwork, PredictionNetwork
 from src.utils import plot_semantic_masks, plot_semantic_img, rgb_to_semantic_mask
 from CarlaBEV.envs import CarlaBEV
+from src.games.carlabev import make_env 
 
 
 def test_loop(env):
@@ -12,13 +13,10 @@ def test_loop(env):
     for _ in range(3000):
         # this is where you would insert your policy
         action = env.action_space.sample()
-
+        
         # step (transition) through the environment with the action
         # receiving the next observation, reward and if the episode has terminated or truncated
         observation, reward, terminated, truncated, info = env.step(action)
-
-        semantic_obs = rgb_to_semantic_mask(observation)
-        plot_semantic_masks(semantic_obs)
 
         total_reward += reward
 
@@ -45,5 +43,6 @@ if __name__ == "__main__":
     print(f"Hidden shape: {hidden.shape}")
     print(f"Next hidden shape: {next_hidden.shape}")
     print(f"Policy logits: {policy_logits.shape}, Value: {value.shape}")
-    env = CarlaBEV(size=128, discrete=True, render_mode="rgb_array")
+    env = make_env(0, True, "test", 128)
     test_loop(env)
+    

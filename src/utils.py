@@ -14,7 +14,6 @@ def rgb_to_semantic_mask(rgb_image):
     """
     # Normalize input if needed (assume 0-255)
     rgb = rgb_image.astype(np.uint8)
-
     h, w, _ = rgb.shape
     mask = np.zeros((6, h, w), dtype=np.float32)
 
