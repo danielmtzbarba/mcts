@@ -18,10 +18,9 @@ from src.mcts.self_play import self_play
 
 from torch.amp import GradScaler, autocast
 
-log_dir = os.path.join("runs", "muzero_nav")
-writer = SummaryWriter(log_dir=log_dir)
 
-scaler = GradScaler()  # Initialize the gradient scaler
+
+
 
 class ReplayBuffer:
     def __init__(self, capacity=1000):
@@ -35,38 +34,87 @@ class ReplayBuffer:
 
     def sample(self, batch_size):
         return random.sample(self.buffer, batch_size)
+    
+    def average_reward(self, window=10):
+        mean_rewards = 0
+        last_episodes = self.buffer[-window:]
+        for episode in last_episodes:
+            mean_rewards += sum([reward for _, _, reward, _ in episode]) / len(episode) 
+        return mean_rewards / len(last_episodes) 
 
     def __len__(self):
         return len(self.buffer)
 
 
+def prepare_tensors(batch):
+    obs_list, action_list, reward_list, policy_list = zip(*batch)
+    obs_tensor = torch.stack([obs.cpu() for obs in obs_list]).squeeze(1).cuda()
+    reward_tensor = torch.stack([torch.tensor(reward, dtype=torch.float32) for reward in reward_list]).cuda()
+    policy_tensor = torch.stack([torch.tensor(policy, dtype=torch.float32) for policy in policy_list]).cuda()
+    action_tensor = torch.stack([torch.tensor(action, dtype=torch.long) for action in action_list]).cuda()
+
+    # Ensure action_tensor has a batch dimension
+    if action_tensor.dim() == 1:  # Single batch element
+        action_tensor = action_tensor.unsqueeze(0)  # Add batch dimension
+
+    return obs_tensor, action_tensor, reward_tensor, policy_tensor
+
 def train_network(
-    model, optimizer, batch, num_unroll_steps, global_step=0, writer=None
+    model, optimizer, batch, num_unroll_steps=5, global_step=0, writer=None
 ):
     model.train()
     losses = []
-    for episode in batch:
-        obs_list, action_list, reward_list, policy_list = zip(*episode)
-        obs_tensor = torch.stack([obs.cpu() for obs in obs_list]).squeeze(1).cuda()
-        reward_tensor = torch.stack([torch.tensor(rew, dtype=torch.float32) for rew in reward_list]).squeeze(1).cuda()
-        
-        with autocast(device_type="cuda"):
-            hidden_state, pred_policy, pred_value = model.initial_inference(obs_tensor)
-            loss = F.mse_loss(pred_value.squeeze(), reward_tensor)
-            losses.append(loss)
+    value_losses = []
+    policy_losses = []
+    reward_losses = []
 
-    total_loss = sum(losses)
-    optimizer.zero_grad()
-    scaler.scale(total_loss).backward()
-    scaler.step(optimizer)
-    scaler.update()
+    for episode in batch:
+        obs_tensor, action_tensor, reward_tensor, policy_tensor = prepare_tensors(episode)
+        root_obs = obs_tensor[0].unsqueeze(0)          
+        # Unroll the episode
+        hidden_state, pred_policy, pred_value = model.initial_inference(root_obs)
+        total_loss = 0.0
+        for step in range(num_unroll_steps):
+            try:
+                action = action_tensor[:, step] 
+            except IndexError:
+                break  # Break if action_tensor is shorter than expected
+            
+            with autocast(device_type="cuda"):
+        
+                hidden_state, policy_logits, pred_value, pred_reward = model.recurrent_inference(
+                    hidden_state, action)
+                # Calculate losses 
+                reward_loss = F.mse_loss(pred_reward, reward_tensor[step].unsqueeze(0))
+                value_loss = F.mse_loss(pred_value, reward_tensor[step].unsqueeze(0))
+                pred_policy = F.softmax(policy_logits, dim=1) 
+                policy_loss = -torch.sum(policy_tensor * torch.log(pred_policy + 1e-8), dim=1).mean()
+                
+                # Combine losses
+                step_loss = (0.01 * policy_loss) + value_loss + reward_loss
+                total_loss += step_loss.item()
+
+        # Backpropagation
+        optimizer.zero_grad()
+        scaler.scale(step_loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+
+        # Append individual losses for logging
+        value_losses.append(value_loss.item())
+        policy_losses.append(policy_loss.item())
+        reward_losses.append(reward_loss.item())
+        losses.append(total_loss)
 
     # Console logging
-    print(f"[Train] Step {global_step}: Loss = {total_loss.item():.4f}")
+    print(f"[Train] Step {global_step}: Total Loss = {total_loss:.4f}")
 
     # TensorBoard logging
     if writer:
-        writer.add_scalar("Loss/total", total_loss.item(), global_step)
+        writer.add_scalar("Loss/total", np.mean(losses), global_step)
+        writer.add_scalar("Loss/value", np.mean(value_losses), global_step)
+        writer.add_scalar("Loss/policy", np.mean(policy_losses), global_step)
+        writer.add_scalar("Loss/reward", np.mean(reward_losses), global_step)
 
 
 # --- Self-Play + Training Loop ---
@@ -80,6 +128,7 @@ def train(num_episodes=1000):
         network=network,
         action_space_size=action_space_size,
         num_simulations=num_simulations,
+        c_puct=4.0,
     )
     global_step, ep = 1, 0
     # Training loop
@@ -87,17 +136,23 @@ def train(num_episodes=1000):
         print(f"\n--- Training Iteration {it}/{num_episodes} ---")
         # Self-play
         for ep in range(num_self_play_episodes):
-            episode_data, total_reward = self_play(env, mcts)
+            episode_data, info = self_play(env, mcts)
             replay_buffer.add(episode_data)
+
             # Console logging
-
             print(
-                f"[Self-Play] Episode {global_step}: Total Reward = {total_reward:.2f}"
+                f"[Self-Play] Episode {global_step}: Return = {info["ep"]["return"][0]:.2f}"
             )
-
+                
             # TensorBoard logging
             if writer:
-                writer.add_scalar("Reward/episode", total_reward, global_step)
+                writer.add_scalar("Stats/episode_return", info["termination"]["return"][0], global_step)
+                writer.add_scalar("Stats/episode_length", info["termination"]["length"][0], global_step)
+                writer.add_scalar("Stats/distance2target", info["env"]["dist2target_t"][0], global_step) 
+
+                if global_step % 10 == 0:  # Log moving average every 10 iterations
+                    writer.add_scalar("Stats/moving_avg_rwd", replay_buffer.average_reward(), global_step) 
+                    
 
             global_step += 1
 
@@ -114,8 +169,8 @@ def train(num_episodes=1000):
             )
 
         # Save checkpoint periodically
-        if (it) % 100 == 0:
-            torch.save(network.state_dict(), f"muzero_nav_checkpoint_ep{it}.pth")
+        if (it) % 50 == 0:
+            torch.save(network.state_dict(), f"out/models/muzero_nav/{run_name}.pth")
             print(f"Checkpoint saved at episode {it}")
 
     print("Training completed!")
@@ -123,28 +178,19 @@ def train(num_episodes=1000):
 
 # --- Hyperparameters ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-num_self_play_episodes = 32
+scaler = GradScaler()  # Initialize the gradient scaler
+#
+run_name = "muzero_nav_unroll_5"
+log_dir = os.path.join("runs", run_name)
+writer = SummaryWriter(log_dir=log_dir)
+# Hyperparameters
+num_self_play_episodes = 25
 num_simulations = 100
-num_unroll_steps = 3
-batch_size = 16
-buffer_size = 500
-learning_rate = 1e-3
-
+num_unroll_steps = 10
+batch_size = 16 
+buffer_size = 200
+learning_rate = 1e-4
 action_space_size = 5
 
 if __name__ == "__main__":
-    obs_shape = (4, 6, 128, 128)  # Example: 4 stacked frames, 6 channels, 128x128 resolution
-    obs_size = np.prod(obs_shape) * 4  # 4 bytes per float32
-    action_size = 1 * 4  # 4 bytes per int32
-    reward_size = 1 * 4  # 4 bytes per float32
-    policy_size = action_space_size * 4  # 4 bytes per float32
-
-    episode_memory = (obs_size + action_size + reward_size + policy_size) * num_unroll_steps
-    replay_buffer_memory = episode_memory * buffer_size / (1024 ** 2)  # Convert to MB
-    print(f"Replay buffer memory: {replay_buffer_memory:.2f} MB")
-
-    batch_memory = episode_memory * batch_size / (1024 ** 2)  # Convert to MB
-    print(f"Batch memory: {batch_memory:.2f} MB")
-    # Start training
-    train()
+    train(num_episodes=250)
