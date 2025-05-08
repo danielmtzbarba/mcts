@@ -43,7 +43,7 @@ def evaluate(env, mcts, num_episodes, logger):
         rets.append(info["termination"]["return"][0])
         lens.append(info["termination"]["length"][0])
     logger.evaluation(rets, lens)
-    return
+    return np.mean(np.array(rets))
 
 
 def self_play(env, mcts, replay_buffer, num_episodes, logger):

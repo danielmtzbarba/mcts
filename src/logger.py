@@ -8,7 +8,7 @@ class DRLogger(object):
         self._run_name = run_name
         log_dir = os.path.join("runs", run_name)
         self.writer = SummaryWriter(log_dir=log_dir)
-        self._num_ep = 0
+        self._num_ep = 1
 
     def episode(self, info, average_reward):
         # Console logging
@@ -59,9 +59,11 @@ class DRLogger(object):
         rets = np.array(rets)
         lens = np.array(lens)
         # Console logging
-        print(
-            f"[Evaluation] Step {self._num_ep}: Return -> Mean={np.mean(rets):.4f}, STD={np.std(rets):.4f}, Var={np.var(rets):.4f}"
-        )
+        print(f"\n--- Training Iteration {it}/{num_episodes} ---")
+        for i, ret in enumerate(rets):
+            print(
+                f"[Evaluation] Step {i}: Return -> Mean={np.mean(rets):.4f}, STD={np.std(rets):.4f}, Var={np.var(rets):.4f}"
+            )
         if self.writer:
             self.writer.add_scalar(
                 "Eval/eval_mean_return",
