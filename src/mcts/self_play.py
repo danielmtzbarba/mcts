@@ -1,28 +1,55 @@
 import torch
 import numpy as np
 
-def self_play(env, mcts):
+
+def play_episode(env, mcts, isTraining):
     next_obs, _ = env.reset()
     b, f, c, h, w = next_obs.shape
     done = False
     episode = []
     total_reward = 0
+
     while not done:
-        obs = torch.tensor(next_obs, dtype=torch.float32).cuda()
-        obs = obs.view((b, -1, h, w))  # Combine f and c into a single channel dimension
-        
-        root = mcts.run(obs)
+        cur_obs = torch.tensor(next_obs, dtype=torch.float32).cuda()
+        cur_obs = cur_obs.view((b, -1, h, w))  # Combine f and c into one dim
+
+        root = mcts.run(cur_obs, isTraining=isTraining)
         visit_counts = np.array(
             [
                 root.children[a].visit_count if a in root.children else 0
                 for a in range(mcts.action_space_size)
             ]
         )
-        policy = visit_counts / visit_counts.sum()
-        action = np.random.choice(mcts.action_space_size, p=policy)
+        # Select action
+        if isTraining:
+            policy = visit_counts / visit_counts.sum()
+            action = np.random.choice(mcts.action_space_size, p=policy)
+        else:
+            action = np.argmax(visit_counts)  # Greedy action for evaluation
+
         next_obs, reward, done, _, info = env.step([action])
-        total_reward += reward
-        obs = obs.cpu()
-       # action = torch.tensor(action, dtype=torch.long)
-        episode.append((obs, action, reward, policy))
-    return episode, info 
+        total_reward += reward if isinstance(reward, (int, float)) else sum(reward)
+
+        if isTraining:
+            episode.append((cur_obs.detach().cpu(), action, reward, policy))
+
+    return episode, info
+
+
+def evaluate(env, mcts, num_episodes, logger):
+    rets, lens = [], []
+    for ep in range(num_episodes):
+        _, info = play_episode(env, mcts, isTraining=False)
+        rets.append(info["termination"]["return"][0])
+        lens.append(info["termination"]["length"][0])
+    logger.evaluation(rets, lens)
+    return
+
+
+def self_play(env, mcts, replay_buffer, num_episodes, logger):
+    for ep in range(num_episodes):
+        episode_data, info = play_episode(env, mcts, isTraining=True)
+        replay_buffer.add(episode_data)
+        avg_rwd = replay_buffer.average_reward()
+        logger.episode(info, avg_rwd)
+    return
