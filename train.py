@@ -36,16 +36,16 @@ def train(run_name, config, num_episodes=50, eval_episodes=10):
         network=network,
         action_space_size=5,
         num_simulations=config.num_simulations,
-        c_puct=2.0,
     )
     #
     optimizer = optim.Adam(network.parameters(), lr=config.learning_rate)
-    scaler = GradScaler()
-
+    scaler = GradScaler()   
+    decay = 0.9846
     # Training loop
     for it in range(1, num_episodes + 1):
-        print(f"\n--- Training Iteration {it}/{num_episodes} ---")
-
+        logger.logger.info(f"\n--- Training Iteration {it}/{num_episodes} ---")
+        current_cpuct = max(config.c_puct * (decay ** logger.num_ep), 0.75)
+        mcts.c_puct = current_cpuct 
         # Self-play
         self_play(env, mcts, replay_buffer, config.num_self_play_episodes, logger)
 

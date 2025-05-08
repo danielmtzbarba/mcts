@@ -4,12 +4,13 @@ import torch.nn.functional as F
 
 
 class MCTSNode:
-    def __init__(self, hidden_state, prior):
+    def __init__(self, hidden_state, prior, c_puct=1.0):
         self.hidden_state = hidden_state  # Tensor representing state
         self.prior = prior  # Prior probability from policy network
         self.visit_count = 0
         self.value_sum = 0.0
         self.children = {}  # action -> MCTSNode
+        self.c_puct = c_puct
 
     @property
     def value(self):
@@ -19,20 +20,18 @@ class MCTSNode:
 
 
 class MuZeroMCTS:
-    def __init__(self, network, action_space_size, num_simulations=50, c_puct=1.0):
+    def __init__(self, network, action_space_size, num_simulations=50):
         self.muzero = network
         self.dynamics_net = network.dynamics_net
         self.prediction_net = network.policy_head
 
         self.action_space_size = action_space_size
         self.num_simulations = num_simulations
-        self.c_puct = c_puct
 
     def run(self, observation, isTraining):
         """
         Main function: Runs MCTS starting from an observation
         """
-
         with torch.no_grad():
             hidden_state, policy_logits, _ = self.muzero.initial_inference(observation)
 

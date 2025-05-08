@@ -36,7 +36,7 @@ def objective(trial):
 
     # Hyperparameters
     config = {
-        "hidden": hidden_dim,
+        "hidden_dim": hidden_dim,
         "num_self_play_episodes": num_self_play_episodes,
         "num_simulations": num_simulations,
         "num_unroll_steps": num_unroll_steps,
@@ -52,7 +52,8 @@ def objective(trial):
 
     # --- Initialize ---
     logger = DRLogger(run_name)
-    env = make_env(seed=0, capture_video=True, run_name=run_name, size=128)
+    env = make_env(seed=0, capture_video=False, run_name=run_name, size=128)
+    eval_env = make_env(seed=1, capture_video=True, run_name=run_name, size=128)
     replay_buffer = ReplayBuffer(capacity=config.buffer_size)
     #
     network = MuZeroAgent(hidden_dim=config.hidden_dim, action_space_size=5).to(device)
@@ -60,17 +61,19 @@ def objective(trial):
         network=network,
         action_space_size=5,
         num_simulations=config.num_simulations,
-        c_puct=config.c_puct,
     )
     #
     optimizer = optim.Adam(network.parameters(), lr=config.learning_rate)
-    scaler = GradScaler()
+    scaler = GradScaler()   
+    decay = 0.9846
 
     num_episodes = 5
+    eval_episodes = 3
     # Training loop
     for it in range(1, num_episodes + 1):
-        print(f"\n--- Training Iteration {it}/{num_episodes} ---")
-
+        logger.logger.info(f"\n--- Training Iteration {it}/{num_episodes} ---")
+        current_cpuct = max(config.c_puct * (decay ** logger.num_ep), 0.75)
+        mcts.c_puct = current_cpuct 
         # Self-play
         self_play(env, mcts, replay_buffer, config.num_self_play_episodes, logger)
 
@@ -80,13 +83,12 @@ def objective(trial):
             train_network(
                 network, optimizer, scaler, batch, config.num_unroll_steps, logger
             )
-
-        # Evaluation
-        if (it) % 5 == 0:
-            avg_ret = evaluate(env, mcts, eval_episodes, logger)
+        
+        mcts.c_puct = 0.5
+        avg_ret = evaluate(eval_env, mcts, eval_episodes, logger)
 
         # Save checkpoint periodically
-        if (it) % 50 == 0:
+        if (it) % 5 == 0:
             torch.save(network.state_dict(), f"out/models/muzero_nav/{run_name}.pth")
             print(f"Checkpoint saved at episode {it}")
 

@@ -1,11 +1,26 @@
 import os
+import sys
+import logging
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
+file_handler = logging.FileHandler(filename="training.log")  # , mode="w")
+stdout_handler = logging.StreamHandler(stream=sys.stdout)
+handlers = [file_handler, stdout_handler]
+
+logging.basicConfig(
+    handlers=handlers,
+    format="[%(asctime)s] %(levelname)s ==> %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+    encoding="utf-8",
+    level=logging.INFO,
+)
+logger = logging.getLogger("training")
 
 class DRLogger(object):
     def __init__(self, run_name) -> None:
         self._run_name = run_name
+        self._logger = logger
         log_dir = os.path.join("runs", run_name)
         self.writer = SummaryWriter(log_dir=log_dir)
         self._num_ep = 1
@@ -59,11 +74,12 @@ class DRLogger(object):
         rets = np.array(rets)
         lens = np.array(lens)
         # Console logging
-        print(f"\n--- Training Iteration {it}/{num_episodes} ---")
+        self._logger.info(f"\n--- Evaluation ---")
         for i, ret in enumerate(rets):
-            print(
-                f"[Evaluation] Step {i}: Return -> Mean={np.mean(rets):.4f}, STD={np.std(rets):.4f}, Var={np.var(rets):.4f}"
-            )
+            self._logger.info(f"[Evaluation]-{i}: {ret:.4f}")
+        self._logger.info(f"[Evaluation]: Return -> Mean={np.mean(rets):.4f}, STD={np.std(rets):.4f}, Var={np.var(rets):.4f}")
+
+
         if self.writer:
             self.writer.add_scalar(
                 "Eval/eval_mean_return",
@@ -80,3 +96,11 @@ class DRLogger(object):
                 np.var(rets),
                 self._num_ep,
             )
+
+    @property
+    def num_ep(self):
+        return self._num_ep
+    
+    @property
+    def logger(self):
+        return self._logger
