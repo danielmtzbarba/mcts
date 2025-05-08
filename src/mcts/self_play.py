@@ -10,10 +10,10 @@ def play_episode(env, mcts, isTraining):
     total_reward = 0
 
     while not done:
-        cur_obs = torch.tensor(next_obs, dtype=torch.float32).cuda()
-        cur_obs = cur_obs.view((b, -1, h, w))  # Combine f and c into one dim
+        obs = torch.tensor(next_obs, dtype=torch.float32).cuda()
+        obs = obs.view((b, -1, h, w))  # Combine f and c into one dim
 
-        root = mcts.run(cur_obs, isTraining=isTraining)
+        root = mcts.run(obs, isTraining=isTraining)
         visit_counts = np.array(
             [
                 root.children[a].visit_count if a in root.children else 0
@@ -31,7 +31,7 @@ def play_episode(env, mcts, isTraining):
         total_reward += reward if isinstance(reward, (int, float)) else sum(reward)
 
         if isTraining:
-            episode.append((cur_obs.detach().cpu(), action, reward, policy))
+            episode.append((obs.detach().cpu(), action, reward, policy))
 
     return episode, info
 

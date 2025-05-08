@@ -60,7 +60,7 @@ class DRLogger(object):
         lens = np.array(lens)
         # Console logging
         print(
-            f"[Evaluation] Step {self._num_ep}: Return -> Mean={np.mean(rets):.4f}, STD={np.std(rets)}, Var={np.var(rets)}"
+            f"[Evaluation] Step {self._num_ep}: Return -> Mean={np.mean(rets):.4f}, STD={np.std(rets):.4f}, Var={np.var(rets):.4f}"
         )
         if self.writer:
             self.writer.add_scalar(

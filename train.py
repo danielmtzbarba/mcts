@@ -89,11 +89,11 @@ def save_run_config_yaml(run_name, config_dict):
 
 # Hyperparameters
 config = {
-    "num_self_play_episodes": 10,
+    "num_self_play_episodes": 25,
     "num_simulations": 100,
-    "num_unroll_steps": 5,
-    "batch_size": 8,
-    "buffer_size": 100,
+    "num_unroll_steps": 10,
+    "batch_size": 16,
+    "buffer_size": 500,
     "learning_rate": 1e-4,
     "c_puct": 2.0,
 }
