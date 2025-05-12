@@ -40,7 +40,7 @@ class MuZeroMCTS:
         # Apply Dirichlet noise to encourage exploration (only at root during training)
         if isTraining:
             epsilon = 0.25  # Mixing factor
-            alpha = 0.3  # Dirichlet concentration
+            alpha = 0.03  # Dirichlet concentration
             dirichlet_noise = np.random.dirichlet([alpha] * self.action_space_size)
             noise_tensor = torch.tensor(
                 dirichlet_noise, dtype=policy.dtype, device=policy.device

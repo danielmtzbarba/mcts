@@ -23,29 +23,27 @@ from src.logger import DRLogger
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 def train(run_name, config, num_episodes=50, eval_episodes=10):
-    logger = DRLogger(run_name)
-
     # --- Initialize ---
-    env = make_env(seed=0, capture_video=True, run_name=run_name, size=128)
+    logger = DRLogger(run_name)
+    env = make_env(seed=0, capture_video=False, run_name=run_name, size=128)
+    eval_env = make_env(seed=1, capture_video=True, run_name=run_name, size=128)
     replay_buffer = ReplayBuffer(capacity=config.buffer_size)
     #
-    network = MuZeroAgent(hidden_dim=128, action_space_size=5).to(device)
+    network = MuZeroAgent(hidden_dim=config.hidden_dim, action_space_size=5).to(device)
     mcts = MuZeroMCTS(
         network=network,
         action_space_size=5,
         num_simulations=config.num_simulations,
     )
-    #
     optimizer = optim.Adam(network.parameters(), lr=config.learning_rate)
-    scaler = GradScaler()   
-    decay = 0.9846
+    scaler = GradScaler()
+
     # Training loop
     for it in range(1, num_episodes + 1):
-        logger.logger.info(f"\n--- Training Iteration {it}/{num_episodes} ---")
-        current_cpuct = max(config.c_puct * (decay ** logger.num_ep), 0.75)
-        mcts.c_puct = current_cpuct 
+        print(f"\n--- Training Iteration {it}/{num_episodes} ---")
+        #current_cpuct = max(config.c_puct * (decay**logger.num_ep), 1.0)
+        mcts.c_puct = config.c_puct
         # Self-play
         self_play(env, mcts, replay_buffer, config.num_self_play_episodes, logger)
 
@@ -56,18 +54,21 @@ def train(run_name, config, num_episodes=50, eval_episodes=10):
                 network, optimizer, scaler, batch, config.num_unroll_steps, logger
             )
 
-        # Evaluation
-        if (it) % 5 == 0:
-            evaluate(env, mcts, eval_episodes, logger)
+        mcts.c_puct = 1.0
+        avg_ret = evaluate(eval_env, mcts, eval_episodes, logger)
 
         # Save checkpoint periodically
-        if (it) % 50 == 0:
+        if (it) % 5 == 0:
             torch.save(network.state_dict(), f"out/models/muzero_nav/{run_name}.pth")
             print(f"Checkpoint saved at episode {it}")
 
-    print("Training completed!")
-    return
+    logger.logger.info("-----")
+    logger.logger.info(run_name)
+    logger.logger.info(f"Average Evaluation Return = {avg_ret:.4f}")
+    logger.logger.info("-----")
+    logger.logger.info("\n")
 
+    return avg_ret
 
 def save_run_config_yaml(run_name, config_dict):
     """
@@ -89,6 +90,7 @@ def save_run_config_yaml(run_name, config_dict):
 
 # Hyperparameters
 config = {
+    "hidden_dim": 128,
     "num_self_play_episodes": 25,
     "num_simulations": 100,
     "num_unroll_steps": 10,
@@ -100,7 +102,7 @@ config = {
 #
 
 if __name__ == "__main__":
-    run_name = f"muzeronav_u{config['num_unroll_steps']}_cp{config['c_puct']}_sim{config['num_simulations']}_bs{config['batch_size']}_buf{config['buffer_size']}_lr{config['learning_rate']}"
+    run_name = f"muzeronav-dim{config['hidden_dim']}_us{config['num_unroll_steps']}_cp{config['c_puct']}_sim{config['num_simulations']}_bs{config['batch_size']}_buf{config['buffer_size']}_lr{config['learning_rate']}"
     config = SimpleNamespace(**config)
     save_run_config_yaml(run_name, config)
     train(run_name, config, num_episodes=50, eval_episodes=10)
