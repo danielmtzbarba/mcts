@@ -35,8 +35,8 @@ def objective(trial):
     num_simulations = trial.suggest_categorical("num_simulations", [25, 50, 100])
     num_unroll_steps = trial.suggest_categorical("num_unroll_steps", [5, 10])
     batch_size = trial.suggest_categorical("batch_size", [8, 16])
-    buffer_size = trial.suggest_categorical("buffer_size", [100, 200, 500, 1000])
-    learning_rate = trial.suggest_categorical("learning_rate", [1e-4, 5e-4, 1e-3])
+    buffer_size = trial.suggest_categorical("buffer_size", [200, 500, 1000])
+    learning_rate = trial.suggest_categorical("learning_rate", [1e-4, 1e-3])
     c_puct = trial.suggest_categorical("c_puct", [1.0, 2.0, 4.0])
 
     # Hyperparameters
@@ -51,7 +51,7 @@ def objective(trial):
         "c_puct": c_puct,
     }
 
-    run_name = f"muzeronav_u{config['num_unroll_steps']}_cp{config['c_puct']}_sim{config['num_simulations']}_bs{config['batch_size']}_buf{config['buffer_size']}_lr{config['learning_rate']}"
+    run_name = f"muzeronav-dim{config['hidden_dim']}_us{config['num_unroll_steps']}_cp{config['c_puct']}_sim{config['num_simulations']}_bs{config['batch_size']}_buf{config['buffer_size']}_lr{config['learning_rate']}"
     config = SimpleNamespace(**config)
     save_run_config_yaml(run_name, config)
 
