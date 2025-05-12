@@ -2,9 +2,11 @@
 import optuna
 
 from types import SimpleNamespace
+
 #
 import os
 import yaml
+
 #
 import torch
 import torch.optim as optim
@@ -23,11 +25,14 @@ from src.logger import DRLogger
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def objective(trial):
     # Suggest hyperparameters
     hidden_dim = trial.suggest_categorical("hidden_dim", [64, 128, 256])
-    num_self_play_episodes = trial.suggest_categorical("num_self_play_episodes", [10, 25, 50, 100])
-    num_simulations = trial.suggest_categorical("num_simulations", [10, 25, 50, 100])
+    num_self_play_episodes = trial.suggest_categorical(
+        "num_self_play_episodes", [25, 50, 100]
+    )
+    num_simulations = trial.suggest_categorical("num_simulations", [25, 50, 100])
     num_unroll_steps = trial.suggest_categorical("num_unroll_steps", [5, 10])
     batch_size = trial.suggest_categorical("batch_size", [8, 16])
     buffer_size = trial.suggest_categorical("buffer_size", [100, 200, 500, 1000])
@@ -62,18 +67,17 @@ def objective(trial):
         action_space_size=5,
         num_simulations=config.num_simulations,
     )
-    #
     optimizer = optim.Adam(network.parameters(), lr=config.learning_rate)
-    scaler = GradScaler()   
+    scaler = GradScaler()
     decay = 0.9846
 
-    num_episodes = 5
+    num_episodes = 10
     eval_episodes = 3
     # Training loop
     for it in range(1, num_episodes + 1):
-        logger.logger.info(f"\n--- Training Iteration {it}/{num_episodes} ---")
-        current_cpuct = max(config.c_puct * (decay ** logger.num_ep), 0.75)
-        mcts.c_puct = current_cpuct 
+        print(f"\n--- Training Iteration {it}/{num_episodes} ---")
+        #current_cpuct = max(config.c_puct * (decay**logger.num_ep), 1.0)
+        mcts.c_puct = config.c_puct
         # Self-play
         self_play(env, mcts, replay_buffer, config.num_self_play_episodes, logger)
 
@@ -83,8 +87,8 @@ def objective(trial):
             train_network(
                 network, optimizer, scaler, batch, config.num_unroll_steps, logger
             )
-        
-        mcts.c_puct = 0.5
+
+        mcts.c_puct = 2.0
         avg_ret = evaluate(eval_env, mcts, eval_episodes, logger)
 
         # Save checkpoint periodically
@@ -92,7 +96,11 @@ def objective(trial):
             torch.save(network.state_dict(), f"out/models/muzero_nav/{run_name}.pth")
             print(f"Checkpoint saved at episode {it}")
 
-    print("Training completed!")
+    logger.logger.info("-----")
+    logger.logger.info(run_name)
+    logger.logger.info(f"Average Evaluation Return = {avg_ret:.4f}")
+    logger.logger.info("-----")
+    logger.logger.info("\n")
 
     return avg_ret
 
@@ -113,6 +121,7 @@ def save_run_config_yaml(run_name, config_dict):
         yaml.dump(config_dict, f, default_flow_style=False)
 
     print(f"✅ Hyperparameters saved to {config_path}")
+
 
 if __name__ == "__main__":
     study = optuna.create_study(direction="maximize")

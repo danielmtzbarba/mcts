@@ -4,7 +4,7 @@ import logging
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
-file_handler = logging.FileHandler(filename="training.log")  # , mode="w")
+file_handler = logging.FileHandler(filename="experiment.log")  # , mode="w")
 stdout_handler = logging.StreamHandler(stream=sys.stdout)
 handlers = [file_handler, stdout_handler]
 
@@ -15,7 +15,8 @@ logging.basicConfig(
     encoding="utf-8",
     level=logging.INFO,
 )
-logger = logging.getLogger("training")
+logger = logging.getLogger("experiment")
+
 
 class DRLogger(object):
     def __init__(self, run_name) -> None:
@@ -74,11 +75,12 @@ class DRLogger(object):
         rets = np.array(rets)
         lens = np.array(lens)
         # Console logging
-        self._logger.info(f"\n--- Evaluation ---")
+        print("\n--- Evaluation ---")
         for i, ret in enumerate(rets):
-            self._logger.info(f"[Evaluation]-{i}: {ret:.4f}")
-        self._logger.info(f"[Evaluation]: Return -> Mean={np.mean(rets):.4f}, STD={np.std(rets):.4f}, Var={np.var(rets):.4f}")
-
+            print(f"[Evaluation]-{i}: {ret:.4f}")
+        print(
+            f"[Evaluation]: Return -> Mean={np.mean(rets):.4f}, STD={np.std(rets):.4f}, Var={np.var(rets):.4f}"
+        )
 
         if self.writer:
             self.writer.add_scalar(
@@ -100,7 +102,7 @@ class DRLogger(object):
     @property
     def num_ep(self):
         return self._num_ep
-    
+
     @property
     def logger(self):
         return self._logger
