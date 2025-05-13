@@ -13,7 +13,7 @@ import torch.optim as optim
 from torch.amp import GradScaler
 
 from src.neural.muzero import MuZeroAgent
-from src.mcts.mucts_nav import MuZeroMCTS
+from src.mcts.mcts_nav import MuZeroMCTS
 from src.mcts.self_play import self_play, evaluate
 from src.games.carlabev import make_env
 

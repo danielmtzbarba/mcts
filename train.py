@@ -11,7 +11,7 @@ import torch.optim as optim
 from torch.amp import GradScaler
 
 from src.neural.muzero import MuZeroAgent
-from src.mcts.mucts_nav import MuZeroMCTS
+from src.mcts.mcts_nav import MuZeroMCTS
 from src.mcts.self_play import self_play, evaluate
 from src.games.carlabev import make_env
 
@@ -95,7 +95,7 @@ config = {
     "num_simulations": 100,
     "num_unroll_steps": 10,
     "batch_size": 16,
-    "buffer_size": 500,
+    "buffer_size": 200,
     "learning_rate": 1e-4,
     "c_puct": 2.0,
 }

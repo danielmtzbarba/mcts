@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 
+from src.mcts.mcts_nav import MinMaxStats
+
 
 def play_episode(env, mcts, isTraining):
     next_obs, _ = env.reset()
@@ -10,10 +12,11 @@ def play_episode(env, mcts, isTraining):
     total_reward = 0
 
     while not done:
+        min_max_stats = MinMaxStats()
         obs = torch.tensor(next_obs, dtype=torch.float32).cuda()
         obs = obs.view((b, -1, h, w))  # Combine f and c into one dim
 
-        root = mcts.run(obs, isTraining=isTraining)
+        root = mcts.run(obs, min_max_stats, isTraining=isTraining)
         visit_counts = np.array(
             [
                 root.children[a].visit_count if a in root.children else 0
