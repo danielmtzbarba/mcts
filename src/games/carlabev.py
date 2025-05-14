@@ -38,12 +38,13 @@ class SemanticMaskWrapper(gym.ObservationWrapper):
         """
         return rgb_to_semantic_mask(observation)
 
+
 def make_carlabev_env(seed, idx, capture_video, run_name, size):
     def thunk():
         if capture_video and idx == 0:
             env = CarlaBEV(render_mode="rgb_array", size=size)
             env = gym.wrappers.RecordVideo(
-                env, f"videos/{run_name}", episode_trigger=lambda x: x % 1 == 0
+                env, f"videos/{run_name}", episode_trigger=lambda x: x % 10 == 0
             )
         else:
             env = CarlaBEV(render_mode="rgb_array", size=size)
@@ -57,6 +58,7 @@ def make_carlabev_env(seed, idx, capture_video, run_name, size):
         return env
 
     return thunk
+
 
 def make_env(seed, capture_video, run_name, size):
     envs = gym.vector.SyncVectorEnv(
@@ -73,4 +75,3 @@ def make_env(seed, capture_video, run_name, size):
     )
 
     return envs
-

@@ -6,17 +6,28 @@ from torch.amp import autocast
 from src.drl.replay_buffer import prepare_tensors
 
 
-def train_network(model, optimizer, scaler, batch, num_unroll_steps=5, logger=None):
+def train_network(model, optimizer, scaler, replay_buffer, batch_size=8 , num_unroll_steps=5, logger=None):
     model.train()
     losses = []
     value_losses = []
     policy_losses = []
     reward_losses = []
 
-    for episode in batch:
+    batch, indices, weights = replay_buffer.sample(batch_size, beta=0.4)
+
+    for i, episode in enumerate(batch):
         obs_tensor, action_tensor, reward_tensor, policy_tensor = prepare_tensors(
             episode
         )
+        # Compute predicted values and TD errors
+        hiddens = model.representation(obs_tensor.cuda())
+        predicted_values = model.value_head(hiddens.cuda())
+        observed_returns = np.array([sum([step[2] for step in episode])])
+        td_errors = np.abs(observed_returns - predicted_values.detach().cpu().numpy())
+
+        # Update priorities in the replay buffer
+        replay_buffer.update_priorities(indices[i:i+1], td_errors)
+
         root_obs = obs_tensor[0].unsqueeze(0)
         # Unroll the episode
         hidden_state, pred_policy, pred_value = model.initial_inference(root_obs)
@@ -41,7 +52,8 @@ def train_network(model, optimizer, scaler, batch, num_unroll_steps=5, logger=No
 
                 # Combine losses
                 step_loss = (0.01 * policy_loss) + value_loss + reward_loss
-                total_loss += step_loss.item()
+                loss = (weights[i] * step_loss).mean()
+                total_loss += loss.item()
 
         # Backpropagation
         optimizer.zero_grad()

@@ -52,7 +52,21 @@ def evaluate(env, mcts, num_episodes, logger):
 def self_play(env, mcts, replay_buffer, num_episodes, logger):
     for ep in range(num_episodes):
         episode_data, info = play_episode(env, mcts, isTraining=True)
-        replay_buffer.add(episode_data)
+
+        td_errors = []
+        for t, (obs, action, reward, policy) in enumerate(episode_data):
+            hiddens = mcts.muzero.representation(obs.cuda())
+            predicted_value = mcts.muzero.value_head(hiddens.cuda()).item()
+            observed_return = sum([step[2] for step in episode_data[t:]])
+
+        # TD error
+        td_error = abs(reward + observed_return - predicted_value)
+        td_errors.append(td_error)
+
+        # Add episode
+        replay_buffer.add(episode_data, td_error=max(td_errors))
+
+        # Log average reward
         avg_rwd = replay_buffer.average_reward()
         logger.episode(info, avg_rwd)
     return

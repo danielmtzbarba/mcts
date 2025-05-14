@@ -23,11 +23,11 @@ from src.logger import DRLogger
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def train(run_name, config, num_episodes=50, eval_episodes=10):
     # --- Initialize ---
     logger = DRLogger(run_name)
-    env = make_env(seed=0, capture_video=False, run_name=run_name, size=128)
-    eval_env = make_env(seed=1, capture_video=True, run_name=run_name, size=128)
+    env = make_env(seed=0, capture_video=True, run_name=run_name, size=128)
     replay_buffer = ReplayBuffer(capacity=config.buffer_size)
     #
     network = MuZeroAgent(hidden_dim=config.hidden_dim, action_space_size=5).to(device)
@@ -42,26 +42,23 @@ def train(run_name, config, num_episodes=50, eval_episodes=10):
     # Training loop
     for it in range(1, num_episodes + 1):
         print(f"\n--- Training Iteration {it}/{num_episodes} ---")
-        #current_cpuct = max(config.c_puct * (decay**logger.num_ep), 1.0)
-        mcts.c_puct = config.c_puct
+        # current_cpuct = max(config.c_puct * (decay**logger.num_ep), 1.0)
         # Self-play
         self_play(env, mcts, replay_buffer, config.num_self_play_episodes, logger)
 
         # Train if enough data
         if len(replay_buffer) >= config.batch_size:
-            batch = replay_buffer.sample(config.batch_size)
             train_network(
-                network, optimizer, scaler, batch, config.num_unroll_steps, logger
+                network, optimizer, scaler, replay_buffer,
+                config.batch_size, config.num_unroll_steps, logger
             )
-
-        mcts.c_puct = 1.0
-        avg_ret = evaluate(eval_env, mcts, eval_episodes, logger)
 
         # Save checkpoint periodically
         if (it) % 5 == 0:
             torch.save(network.state_dict(), f"out/models/muzero_nav/{run_name}.pth")
             print(f"Checkpoint saved at episode {it}")
 
+    avg_ret = evaluate(env, mcts, eval_episodes, logger)
     logger.logger.info("-----")
     logger.logger.info(run_name)
     logger.logger.info(f"Average Evaluation Return = {avg_ret:.4f}")
@@ -69,6 +66,7 @@ def train(run_name, config, num_episodes=50, eval_episodes=10):
     logger.logger.info("\n")
 
     return avg_ret
+
 
 def save_run_config_yaml(run_name, config_dict):
     """
@@ -92,12 +90,12 @@ def save_run_config_yaml(run_name, config_dict):
 config = {
     "hidden_dim": 128,
     "num_self_play_episodes": 25,
-    "num_simulations": 100,
-    "num_unroll_steps": 10,
-    "batch_size": 16,
+    "num_simulations": 50,
+    "num_unroll_steps": 5,
+    "batch_size": 8,
     "buffer_size": 200,
-    "learning_rate": 1e-4,
-    "c_puct": 2.0,
+    "learning_rate": 5e-5,
+    "c_puct": 1.25,
 }
 #
 
