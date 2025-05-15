@@ -19,9 +19,11 @@ def train_network(model, optimizer, scaler, replay_buffer, batch_size=8 , num_un
         obs_tensor, action_tensor, reward_tensor, policy_tensor = prepare_tensors(
             episode
         )
-        # Compute predicted values and TD errors
-        hiddens = model.representation(obs_tensor.cuda())
-        predicted_values = model.value_head(hiddens.cuda())
+        with torch.no_grad():
+            # Compute predicted values and TD errors
+            hiddens = model.representation(obs_tensor.cuda())
+            predicted_values = model.value_head(hiddens.cuda())
+
         observed_returns = np.array([sum([step[2] for step in episode])])
         td_errors = np.abs(observed_returns - predicted_values.detach().cpu().numpy())
 
