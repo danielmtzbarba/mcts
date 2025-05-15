@@ -56,6 +56,22 @@ class DRLogger(object):
                     average_reward,
                     self._num_ep,
                 )
+
+                self.writer.add_scalar(
+                    "Stats/success_rate_rate",
+                    info["termination"]["success_rate"][0],
+                    self._num_ep,
+                )
+                self.writer.add_scalar(
+                    "Stats/collision_rate",
+                    info["termination"]["collision_rate"][0],
+                    self._num_ep,
+                )
+                self.writer.add_scalar(
+                    "Stats/unfinished_rate",
+                    info["termination"]["unfinished_rate"][0],
+                    self._num_ep,
+                )
         self._num_ep += 1
         return
 
