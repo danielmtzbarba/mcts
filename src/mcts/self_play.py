@@ -55,13 +55,14 @@ def self_play(env, mcts, replay_buffer, num_episodes, logger):
 
         td_errors = []
         for t, (obs, action, reward, policy) in enumerate(episode_data):
-            hiddens = mcts.muzero.representation(obs.cuda())
-            predicted_value = mcts.muzero.value_head(hiddens.cuda()).item()
-            observed_return = sum([step[2] for step in episode_data[t:]])
+            with torch.no_grad():
+                hiddens = mcts.muzero.representation(obs.cuda())
+                predicted_value = mcts.muzero.value_head(hiddens).item()
+                observed_return = sum([step[2] for step in episode_data[t:]])
 
-        # TD error
-        td_error = abs(reward + observed_return - predicted_value)
-        td_errors.append(td_error)
+                # TD error
+                td_error = abs(reward + observed_return - predicted_value)
+                td_errors.append(td_error)
 
         # Add episode
         replay_buffer.add(episode_data, td_error=max(td_errors))
