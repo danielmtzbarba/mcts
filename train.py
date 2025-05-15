@@ -89,11 +89,11 @@ def save_run_config_yaml(run_name, config_dict):
 # Hyperparameters
 config = {
     "hidden_dim": 128,
-    "num_self_play_episodes": 25,
-    "num_simulations": 50,
-    "num_unroll_steps": 10,
-    "batch_size": 16,
-    "buffer_size": 200,
+    "num_self_play_episodes": 10,
+    "num_simulations": 100,
+    "num_unroll_steps": 15,
+    "batch_size": 8,
+    "buffer_size": 100,
     "learning_rate": 5e-5,
     "c_puct": 1.25,
 }
@@ -103,4 +103,4 @@ if __name__ == "__main__":
     run_name = f"muzeronav-dim{config['hidden_dim']}_us{config['num_unroll_steps']}_cp{config['c_puct']}_sim{config['num_simulations']}_bs{config['batch_size']}_buf{config['buffer_size']}_lr{config['learning_rate']}"
     config = SimpleNamespace(**config)
     save_run_config_yaml(run_name, config)
-    train(run_name, config, num_episodes=50, eval_episodes=10)
+    train(run_name, config, num_episodes=200, eval_episodes=10)
